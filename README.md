@@ -24,3 +24,14 @@ java进程执行管理类：Process
 ### 1.把用户代码保存为文件
  原理就是读取传入的代码转为字符串，写入指定文件中，这里需要注意的是，每次用户提交需要额外创建一个文件夹，因为用户不可能只提交一次代码，这样可以区分不同的提交
  可以参考JavaNativeCodeSandbox中的代码
+ 
+### 2.编译代码，得到class文件
+java执行程序：            Process exec = Runtime.getRuntime().exec(compileCmd);
+java获取控制台输出          BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(compileProcess.getInputStream()));
+
+
+### 3.执行程序
+第一个占位符：路径 第二个占位符 执行代码需要的输入参数 -Dfile.encoding=UTF-8 设置运行时编码格式为utf-8   
+String runCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s",userCodeParentPath,inputArgs);
+
+
