@@ -6,7 +6,8 @@ import lombok.Data;
 @Data
 public class Executemessage {
 
-    private Integer exitValue;
-    private String message;
-    private String errorMessage;
+    private Integer exitValue;//状态码
+    private String message; //执行结果信息
+    private String errorMessage; //错误信息
+    private Long time;  //运行时间
 }

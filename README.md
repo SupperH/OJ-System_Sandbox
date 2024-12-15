@@ -34,4 +34,31 @@ java获取控制台输出          BufferedReader bufferedReader = new BufferedR
 第一个占位符：路径 第二个占位符 执行代码需要的输入参数 -Dfile.encoding=UTF-8 设置运行时编码格式为utf-8   
 String runCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s",userCodeParentPath,inputArgs);
 
+可以使用scanner和用户交互方式，让用户不断输入内容并获取输出 方法是ProcessUtils.runInteractProcessAndGetMessage
 
+### 4.整理输出
+获取程序执行时间，使用spring的StopWatch获取一段程序的执行时间 这里用最大值执行时间判断程序是否超时
+
+
+### 5.文件清理
+        if(userCodeFile.getParentFile() !=null){
+            //这里用的是hutu工具包
+            boolean del = FileUtil.del(userCodeParentPath);
+            System.out.println("删除"+(del?"成功":"失败"));
+        }
+
+### 6.错误处理，提升程序健壮性
+创建错误处理方法，然后在catch处return
+
+    private ExecuteCodeResponse getErrorResponse(Throwable e){
+        //如果程序报错，返回一个空的response，里面包含错误信息和状态码
+        ExecuteCodeResponse executeCodeResponse = new ExecuteCodeResponse();
+        executeCodeResponse.setOutPutList(new ArrayList<>());
+        //存放程序错误信息
+        executeCodeResponse.setMessage(e.getMessage());
+        //表示代码沙箱程序错误
+        executeCodeResponse.setStatus(2);
+        executeCodeResponse.setJudgeInfo(new JudgeInfo());
+
+        return executeCodeResponse;
+    }
