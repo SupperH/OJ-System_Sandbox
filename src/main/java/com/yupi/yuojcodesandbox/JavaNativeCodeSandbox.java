@@ -3,10 +3,14 @@ package com.yupi.yuojcodesandbox;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.dfa.FoundWord;
+import cn.hutool.dfa.WordTree;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeRequest;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeResponse;
 import com.yupi.yuojcodesandbox.model.Executemessage;
 import com.yupi.yuojcodesandbox.model.JudgeInfo;
+import com.yupi.yuojcodesandbox.security.DefaultSecurityManager;
+import com.yupi.yuojcodesandbox.security.DenySecurityManager;
 import com.yupi.yuojcodesandbox.utils.ProcessUtils;
 import org.springframework.util.StopWatch;
 
@@ -29,6 +33,28 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
     //全局代码文件名
     private static final String GLOBAL_JAVA_CLASS_NAME = "Main.java";
 
+    //超时时间 5秒
+    private static final long TIME_OUT = 5000L;
+
+    //设置代码黑名单，如果用户的代码有这些内容，直接不予以执行
+    private static final List<String> blackList = Arrays.asList("Files","exec");
+
+    //定义代码树判断代码是否合法
+    private static final WordTree WORD_TREE;
+
+    //安全管理器class文件所在文件夹
+    private static final  String SECURITY_MANAGER_PATH = "G:\\JavaProjects\\OJ\\yuoj-code-sandbox\\src\\main\\resources\\security";
+    private static final  String SECURITY_MANAGER_CLASSNAME = "MySecurityManager";
+
+    //在代码初始化的时候,初始化字典树
+    static{
+        /*首先校验代码，判断代码是否有非法的命令和方法会影响服务器*/
+        /*使用WordTree字节树进行判断 ，WordTree会把list放入字节树然后对字符串进行匹配  hutool工具包里的*/
+        WORD_TREE = new WordTree();
+        WORD_TREE.addWords(blackList);
+    }
+
+
     //测试代码
     public static void main(String[] args) {
         JavaNativeCodeSandbox javaNativeCodeSandbox = new JavaNativeCodeSandbox();
@@ -36,7 +62,7 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         executeCodeRequest.setInputList(Arrays.asList("1 2", "1 3"));
 
         //使用resourceutil读取对应的文件内容 设置读取的编码格式
-        String code = ResourceUtil.readStr("testCode/simpleComputeArgs/Main.java",StandardCharsets.UTF_8);
+        String code = ResourceUtil.readStr("testCode/unsafeCode/ReadFileError.java",StandardCharsets.UTF_8);
         executeCodeRequest.setCode(code);
         executeCodeRequest.setLanguage("java");
         ExecuteCodeResponse executeCodeResponse = javaNativeCodeSandbox.executeCode(executeCodeRequest);
@@ -46,9 +72,17 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
 
     @Override
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+
         List<String> inputList = executeCodeRequest.getInputList();
         String code = executeCodeRequest.getCode();
         String language = executeCodeRequest.getLanguage();
+
+//        //校验代码是否存在黑名单中的命令和代码
+//        FoundWord foundWord = WORD_TREE.matchWord(code);
+//        if(foundWord != null){
+//            System.out.println("包含敏感词：" + foundWord.getFoundWord());
+//            return null;
+//        }
 
         //获取用户工作目录，也就是根目录
         String userDir = System.getProperty("user.dir");
@@ -74,6 +108,19 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         try {
             //编译代码，得到class文件 使用的是java类中的Process类的功能，这个类可以执行可以在控制台执行的命令
             Process compileProcess = Runtime.getRuntime().exec(compileCmd);
+
+            //控制运行时间，创建一个新线程，如果超过5秒就强制杀死进程，防止死循环
+            /*通过创建一个守护线程，超时后自动中断process*/
+            new Thread(() ->{
+                try {
+                    Thread.sleep(TIME_OUT);
+                    System.out.println("运行超时");
+                    compileProcess.destroy();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }).start();
+
             Executemessage executemessage = ProcessUtils.runProcessAndGetMessage(compileProcess, "编译");
             System.out.println(executemessage);
 
@@ -87,8 +134,12 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         /*执行代码，得到输出结果*/
         //循环输入参数，拼接到执行命令中 inputList 是一个list集合，长度多少就应该有多少次输出，所以循环
         for(String inputArgs : inputList){
-            /*第一个占位符：路径 第二个占位符 执行代码需要的输入参数 -Dfile.encoding=UTF-8 设置运行时编码格式为utf-8*/
-            String runCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s",userCodeParentPath,inputArgs);
+            /*%s占位符
+             -Dfile.encoding=UTF-8 设置运行时编码格式为utf-8
+             -Xmx256m 给进程分配256m的jvm空间*/
+            //然后通过命令来让java允许时，启动我们定义的安全管理器 注意把安全管理器放到单独的文件夹里，然后通过命令的方式加载
+            String runCmd = String.format("java -Xmx256m -Dfile.encoding=UTF-8 -cp %s;%s -Djava.security.manager=%s Main %s",
+                    userCodeParentPath,SECURITY_MANAGER_PATH,SECURITY_MANAGER_CLASSNAME,inputArgs);
             try {
                 Process runProcess = Runtime.getRuntime().exec(runCmd);
                 Executemessage executemessage = ProcessUtils.runProcessAndGetMessage(runProcess, "运行");
