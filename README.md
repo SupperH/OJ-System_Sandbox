@@ -159,7 +159,7 @@ public class RunFileError {
 
 3） 限制代码 -黑白名单
      先定义一个黑白名单，比如哪些操作禁止 HuTool字典树工具类 WordTree，可以用更少的空间存储更多的敏感词汇，以及实现更高效的敏感词查找  **这个可以写在简历上**
- ![](G:\JavaProjects\OJ\yuoj-code-sandbox\src\image\WordTree原理.jpg)
+ ![](src/image/WordTree原理.jpg)
     **缺点：**  无法遍历所有的黑名单，不同的编程语言，对应的领域，关键词都不一样，限制人工成本很大
 
 4） 限制用户的操作权限（文件，网络，执行）
