@@ -71,11 +71,10 @@ String runCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s",userCo
  向服务器写文件，植入危险程序
  运行其他程序，比如木马程序
 
+```java
  package com.yupi.yuojcodesandbox.unsafe;
-
 import java.util.ArrayList;
 import java.util.List;
-
 //无限占用空间
 public class MemoryError {
 
@@ -88,10 +87,12 @@ public class MemoryError {
     }
 
 }
+```
+
 实际运行中，会发现，内存占用到达一定空间后程序就会自动报错 oom 这是jvm的一个保护机制
 JVisualJvm或Jconsole工具可以连接到jvm虚拟机上来可视化查看运行状态 jconsole在jdk安装bin目录下
 
-
+```java
 //文件泄露 读取服务器文件
 public class Main {
 
@@ -105,8 +106,9 @@ public class Main {
     }
 
 }
+```
 
-
+```java
 //向服务器写文件，植入危险程序
 public class WriteFileError {
 
@@ -120,7 +122,9 @@ public class WriteFileError {
     }
 
 }
+```
 
+```java
 //运行其他程序，比如木马程序
 public class RunFileError {
 
@@ -139,19 +143,26 @@ public class RunFileError {
         System.out.println("执行异常程序成功");
     }
 }
+```
+
+
+
 
 
 ### 解决方法
- 1） 超时控制 通过创建一个守护线程，超时后自动中断process
- 2） 限制给用户分配的资源 不能让每个java进程的执行占用JVM最大堆内存空间都和系统一致，应该小一点比如256MB
+1） 超时控制 通过创建一个守护线程，超时后自动中断process
+
+2） 限制给用户分配的资源 不能让每个java进程的执行占用JVM最大堆内存空间都和系统一致，应该小一点比如256MB
      在启动java时 可以指定内存大小 -Xmx256m（最大） -xms（最小）
      注意！ -Xmx参数，jvm的堆内存限制，不等同于系统实际占用的最大直言，可能会超出，如果需要更严格的内存限制，要在系统层面限制而不是jvm
      如果是linux，可以使用cgroup来实现对某个进程的cpu，内存等资源的分配
- 3） 限制代码 -黑白名单
+
+3） 限制代码 -黑白名单
      先定义一个黑白名单，比如哪些操作禁止 HuTool字典树工具类 WordTree，可以用更少的空间存储更多的敏感词汇，以及实现更高效的敏感词查找  **这个可以写在简历上**
- ![image/WordTree原理.jpg](G:\JavaProjects\OJ\yuoj-code-sandbox\src\image\WordTree原理.jpg)
+ ![](G:\JavaProjects\OJ\yuoj-code-sandbox\src\image\WordTree原理.jpg)
     **缺点：**  无法遍历所有的黑名单，不同的编程语言，对应的领域，关键词都不一样，限制人工成本很大
- 4） 限制用户的操作权限（文件，网络，执行）
+
+4） 限制用户的操作权限（文件，网络，执行）
     java安全管理器来实现更严格的限制 security manager   是java提供的保护jvm java安全的机制，可以实现更严格的资源操作限制
     限制用户对文件，内存，cpu，网络等资源的操作和访问
     继承SecurityManager接口  实际情况下，我们只需要限制子程序的权限即可，不用限制开发者自己写的程序，也就是说限制的代码加在允许用户代码的时候即可
@@ -160,5 +171,5 @@ public class RunFileError {
         **注意：SecurityManager类在jdk17以及被废弃，所以这个方法只适用于17以下的环境！！！！！！**
         **缺点：如果要做比较严格的权限限制，要自己判断哪些文件需要控制读写，粒度太细，难以精细化控制**
 
- 5） 运行环境隔离
+5） 运行环境隔离
     系统层面上，把用户程序封装到沙箱，和宿主机隔离开 使用Docker容器技术实现（底层使用cgroup，namespace等方式实现的）
