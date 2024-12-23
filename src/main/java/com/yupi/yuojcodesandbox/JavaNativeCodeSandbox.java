@@ -62,7 +62,8 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         executeCodeRequest.setInputList(Arrays.asList("1 2", "1 3"));
 
         //使用resourceutil读取对应的文件内容 设置读取的编码格式
-        String code = ResourceUtil.readStr("testCode/unsafeCode/ReadFileError.java",StandardCharsets.UTF_8);
+        String code = ResourceUtil.readStr("testCode/simpleComputeArgs/Main.java",StandardCharsets.UTF_8);
+        //String code = ResourceUtil.readStr("testCode/unsafeCode/ReadFileError.java",StandardCharsets.UTF_8);
         executeCodeRequest.setCode(code);
         executeCodeRequest.setLanguage("java");
         ExecuteCodeResponse executeCodeResponse = javaNativeCodeSandbox.executeCode(executeCodeRequest);

@@ -173,3 +173,88 @@ public class RunFileError {
 
 5） 运行环境隔离
     系统层面上，把用户程序封装到沙箱，和宿主机隔离开 使用Docker容器技术实现（底层使用cgroup，namespace等方式实现的）
+
+
+## Docker容器技术
+为了提升系统安全性，把不同的程序和宿主机进行隔离 所以使用docker，使得某个程序的执行不会影响到系统本身
+docker技术可以实现程序和宿主机的隔离
+
+
+### 什么是容器
+理解为对一系列应用程序，服务和环境的封装，从而把程序运行再一个隔离的，密闭的，隐私的空间内，对外整体提供服务。 就是一种封装
+可以把一个容器理解为一个新的电脑（定制化的操作系统）
+
+
+### docker基本概念
+镜像：用来创建容器的安装包，可以理解为给电脑安装操作系统的系统镜像
+容器：通过镜像来创建的一套运行环境，一个容器可以运行多个程序，可以理解为一个服务器
+Dockerfile：制作镜像的文件，可以理解为制作镜像的清单，Docker Image：镜像，Docker Container：容器
+
+
+### Docker实现原理
+![](src/image/docker原理.jpg)
+**Docker运行在linux内核上
+CGroups：实现了容器的资源隔离，底层是LinuxCgroup命令，能够控制进程使用的资源
+Network网络：实现容器的网络隔离，docker容器内部的网络互不影响
+Namespaces命名空间：可以把进程隔离在不同的命名空间下，每个容器都可以有自己的命名空间，不同的命名空间下的进程互不影响
+Storage存储空间：容器内的文件是相互隔离的，也可以去使用宿主机的文件
+docker compose：是一种同时启动多个容器的集群操作工具，一般情况下开发只要了解即可
+镜像仓库：存放镜像的仓库，用户可以从仓库下载现成的镜像，也可以把自己的镜像放到仓库
+推荐使用官方镜像hub.docker.com**
+
+一般情况不建议在windows安装docker
+windows本身自带了一个虚拟机叫WSL
+
+
+### Docker常用操作
+docker --help
+docker 子命令 --help
+
+拉取镜像
+docker pull hello-world
+
+根据镜像创建容器
+docker create hello-world
+启动镜像
+docker start ...
+查看日志
+docker logs ...
+删除容器
+docker rm ...
+删除镜像
+docker rmi ... 
+
+### java操作Docker
+使用docker-java第三方库
+
+
+DockerClientConfig:用于定义初始化DockerClient的配置，类比于Mysql的链接，线程数配置
+DockerHttpClient：用于向Docker守护线程发送请求的客户端，底层封装，不推荐使用
+DockerClient：才是真正和Docker守护进程交互，最方便的SDK，高层封装，对DockerHttpClient再进行了一层封装，理解成Mybatis，提供了现成的增删改查
+
+
+
+### linux远程开发
+可以使用idea直接remote development 也可以再idea配置sftp链接
+两者区别就是 第一种直接用linux代码 第二种是在windows开发然后push到linux
+天坑：要开放2375的tcp端口给windows使用 否则无法连接
+案例在DockerDemo.java
+而且第二种在运行代码的时候会出问题
+
+
+## Docker实现代码沙箱
+实现流程:docker负责运行java程序,得到运行结果
+**重点:要把编译后的代码上传到容器环境内**
+
+这里可以使用模板方法设计模式:定义同一套实现流程,让不同子类去负责不同流程的具体实现,执行步骤一样,每个步骤实现方式不一样
+
+创建容器,上传编译文件
+启动容器执行代码
+docker执行容器,操作已启动容器
+docker exec
+
+
+
+
+6 2：34：44
+
