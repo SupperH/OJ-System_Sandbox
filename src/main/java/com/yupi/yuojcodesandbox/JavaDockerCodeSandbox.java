@@ -1,29 +1,35 @@
 package com.yupi.yuojcodesandbox;
 
+import cn.hutool.core.date.StopWatch;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.dfa.WordTree;
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.*;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientBuilder;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.command.ExecStartResultCallback;
+import com.google.common.base.Stopwatch;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeRequest;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeResponse;
 import com.yupi.yuojcodesandbox.model.Executemessage;
 import com.yupi.yuojcodesandbox.model.JudgeInfo;
 import com.yupi.yuojcodesandbox.utils.ProcessUtils;
 
+import java.io.Closeable;
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 //java原生实现的代码沙箱
 public class JavaDockerCodeSandbox implements CodeSandbox {
@@ -135,6 +141,8 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
         hostConfig.withMemory(100*1000*1000L);
         //设置容器的cpu 设置为1核
         hostConfig.withCpuCount(1L);
+        //配置linux的安全管理配置 这里放入命令
+        //hostConfig.withSecurityOpts(Arrays.asList("seccomp=安全管理配置字符串"));
 
         /*这里这么做的目的是 因为这个目前是在windows开发,然后远程操作linux运行,然后代码会自动push到linux的文件夹,本质还是本地开发,所以使用file.seperator获取分隔符是没有意义的
          * 因为这里是将linux中项目代码存放目录中的用户运行代码tmpCode映射到一个专门存放用户代码的文件夹,如果不改的话会导致第一i给参数映射的文件夹是windows那么把这个文件夹拿到linux去找是找不到会报错的*/
@@ -146,6 +154,8 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
         // .withAttachStdin(true).withAttachStderr(true).withAttachStderr(true) 把docker和本地的终端获取链接,能获取输入输出
         // .withTty(true) 创建一个交互终端
         CreateContainerResponse createContainerResponse = containerCmd
+                .withNetworkDisabled(true) //创建容器时设置网络容器为关闭
+                .withReadonlyRootfs(true)
                 .withHostConfig(hostConfig)
                 .withAttachStdin(true)
                 .withAttachStderr(true)
@@ -158,10 +168,19 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
         /*启动容器 也是异步，可能容器还没启动就往下继续走了*/
         dockerClient.startContainerCmd(containerId).exec();
 
-
+        //存放输出结果列表
+        List<Executemessage> executemessageList = new ArrayList<>();
+        /*执行命令，运行用户代码*/
+        //docker exec container_name java -cp /app Main 1 3
         for (String inputArgs : inputList) {
+
+            /*使用stopWatch计算程序运行的时间*/
+            StopWatch stopwatch = new StopWatch();
+
+            /*命令用空格分开一个个拼接，否则linux可能会认为没有空格是一个字符串*/
             String[] inputArgsArray = inputArgs.split(" ");
             String[] cmdArray = ArrayUtil.append(new String[]{"java", "-cp", "/app", "Main"}, inputArgsArray);
+            //首先创建命令
             ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
                     .withCmd(cmdArray)
                     .withAttachStderr(true)
@@ -169,30 +188,143 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
                     .withAttachStdout(true)
                     .exec();
             System.out.println("创建执行命令: " + execCreateCmdResponse);
+
+            //获取结果
+            Executemessage executemessage = new Executemessage();
+            final String[] message = {null};
+            final String[] errorMessage = {null};
+            long time = 0L;
+
+            //默认运行超时，如果没超时的话下面执行完start后就会调用回调函数，然后再complete把变量变成false
+            final boolean[] timeout = {true};
             String execId = execCreateCmdResponse.getId();
+            //回调函数 获取运行结果
             ExecStartResultCallback execStartResultCallback = new ExecStartResultCallback() {
+
+                @Override
+                public void onComplete() {
+                    //如果执行完成，表示没超时
+                    timeout[0] =false;
+                    super.onComplete();
+                }
+
                 @Override
                 public void onNext(Frame frame) {
                     StreamType streamType = frame.getStreamType();
                     if (StreamType.STDERR.equals(streamType)) {
+                        errorMessage[0] = new String(frame.getPayload());
                         System.out.println("输出错误结果: " + new String(frame.getPayload()));
                     } else {
+                        message[0] = new String(frame.getPayload());
                         System.out.println("输出结果: " + new String(frame.getPayload()));
                     }
                     super.onNext(frame);
                 }
             };
+
+            final long[] maxmemory = {0L};
+
+            /*获取占用的内存*/
+            StatsCmd statsCmd = dockerClient.statsCmd(containerId);
+            ResultCallback<Statistics> statisticsResultCallback = statsCmd.exec(new ResultCallback<Statistics>() {
+                //获取占用内存
+                @Override
+                public void onNext(Statistics statistics) {
+                    System.out.println("内存占用：" + statistics.getMemoryStats().getUsage());
+                    maxmemory[0] = Math.max(statistics.getMemoryStats().getUsage(), maxmemory[0]);
+                }
+                @Override
+                public void onStart(Closeable closeable) {
+
+                }
+                @Override
+                public void onError(Throwable throwable) {
+
+                }
+                @Override
+                public void onComplete() {
+
+                }
+                @Override
+                public void close() throws IOException {
+
+                }
+            });
+            statsCmd.exec(statisticsResultCallback);
+
             try {
+                stopwatch.start();
+                //执行命令 要传一个异步回调的函数 awaitCompletion等这个执行完再往下走 在这里设置执行时间，如果超时直接退出 达到超时控制效果
                 dockerClient.execStartCmd(execId)
                         .exec(execStartResultCallback)
-                        .awaitCompletion();
+                        .awaitCompletion(TIME_OUT, TimeUnit.MICROSECONDS);
+                stopwatch.stop();
+                /*获取程序执行时间*/
+                time = stopwatch.getLastTaskTimeMillis();
+                statsCmd.close();
+
             } catch (InterruptedException e) {
                 System.out.println("程序执行异常");
                 throw new RuntimeException(e);
             }
+            //给执行信息赋值
+            executemessage.setMessage(message[0]);
+            executemessage.setErrorMessage(errorMessage[0]);
+            executemessage.setTime(time);
+            executemessage.setMemory(maxmemory[0]);
+            executemessageList.add(executemessage);
         }
 
+        /*收集整理输出结果*/
         ExecuteCodeResponse executeCodeResponse = new ExecuteCodeResponse();
+
+        //循环去获取每一个case的执行结果
+        List<String> outputList = new ArrayList<>();
+        //存放运行时间最大值
+        long maxTime = 0;
+        for(Executemessage executemessage : executemessageList){
+            String errorMessage = executemessage.getErrorMessage();
+            //如果输出结果中错误信息不为空，说明这一个case报错，那么赋值错误信息并且结束循环
+            if(StrUtil.isNotBlank(errorMessage)){
+                executeCodeResponse.setMessage(errorMessage);
+                //用户提交的代码执行中存在错误
+                executeCodeResponse.setStatus(3);
+                break;
+            }
+            outputList.add(executemessage.getMessage());
+
+            /*执行时间，这里使用所有输出用例中的最大值，这里可以当作扩展，每个case都有自己单独的执行时间，其实就跟输出结果一样用list就行了*/
+            Long time = executemessage.getTime();
+            if(time !=null){
+                //使用函数来获取最大值
+                maxTime = Math.max(maxTime,time);
+            }
+        }
+        /*如果正常运行完成，那么输出case的结果和输出结果列表的长度是一样的 因为上面for循环如果不结束循环会把每一个输出结果列表的值放入case执行结果中*/
+        if(outputList.size() == executemessageList.size()){
+            //正常运行完成
+            executeCodeResponse.setStatus(1);
+        }
+
+        //赋值输出结果
+        executeCodeResponse.setOutPutList(outputList);
+
+        //判题详情信息不在代码沙箱服务赋值，在判题服务中进行赋值
+        JudgeInfo judgeInfo = new JudgeInfo();
+        judgeInfo.setTime(maxTime);
+        //非常麻烦，这里暂时不做实现 要借助第三方库
+//        judgeInfo.setMemory();
+        executeCodeResponse.setJudgeInfo(judgeInfo);
+
+
+        /*文件清理， 上述结果结束后，为了防止内存资源和硬盘资源浪费，应该进行文件清理*/
+        if(userCodeFile.getParentFile() !=null){
+            //这里用的是hutu工具包
+            boolean del = FileUtil.del(userCodeParentPath);
+            System.out.println("删除"+(del?"成功":"失败"));
+        }
+
+
         return executeCodeResponse;
     }
 
