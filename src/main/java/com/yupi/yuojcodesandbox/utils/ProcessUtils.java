@@ -2,9 +2,12 @@ package com.yupi.yuojcodesandbox.utils;
 
 import cn.hutool.core.util.StrUtil;
 import com.yupi.yuojcodesandbox.model.Executemessage;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.StopWatch;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 //进程工具类
 public class ProcessUtils {
@@ -31,18 +34,17 @@ public class ProcessUtils {
 
             if (exitValue == 0) {
                 System.out.println(opName+"成功");
-                StringBuilder sb = new StringBuilder();
-
                 /*分批获取程序的输出，也就是获取控制台内容，然后使用bufferedReader包装成块读取内容*/
                 BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(runProcess.getInputStream()));
+                List<String> outputStrList = new ArrayList<>();
                 String compileOutputLine;
                 //会有很多行信息在控制台，每次只读取一行，用while循环 逐行读取
                 while ((compileOutputLine = bufferedReader.readLine()) != null) {
                     System.out.println(compileOutputLine);
-                    sb.append(compileOutputLine);
+                    outputStrList.add(compileOutputLine);
                 }
-
-                executemessage.setMessage(sb.toString());
+                //拼接信息后面拼接换行符
+                executemessage.setMessage(StringUtils.join(outputStrList,"\n"));
             } else {
                 System.out.println(opName+"失败,错误码" + exitValue);
                 StringBuilder sb = new StringBuilder();
@@ -51,22 +53,30 @@ public class ProcessUtils {
 
                 /*分批获取程序的正常输出，也就是获取控制台内容，然后使用bufferedReader包装成块读取内容*/
                 BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(runProcess.getInputStream()));
+
+
+                List<String> outputStrList = new ArrayList<>();
                 String compileOutputLine;
                 //会有很多行信息在控制台，每次只读取一行，用while循环 逐行读取
                 while ((compileOutputLine = bufferedReader.readLine()) != null) {
                     System.out.println(compileOutputLine);
-                    sb.append(compileOutputLine);
+                    outputStrList.add(compileOutputLine);
                 }
+                //拼接信息后面拼接换行符
+                executemessage.setMessage(StringUtils.join(outputStrList,"\n"));
+
 
                 /*分批获取程序的错误输出，也就是获取控制台内容，然后使用bufferedReader包装成块读取内容*/
                 BufferedReader errorBufferedReader = new BufferedReader(new InputStreamReader(runProcess.getErrorStream()));
+                List<String> errorOutputStrList = new ArrayList<>();
                 String errorCompileOutputLine;
                 //会有很多行信息在控制台，每次只读取一行，用while循环 逐行读取
                 while ((errorCompileOutputLine = errorBufferedReader.readLine()) != null) {
                     System.out.println(errorCompileOutputLine);
-                    errorsb.append(errorCompileOutputLine);
+                    errorOutputStrList.add(errorCompileOutputLine);
                 }
-                executemessage.setErrorMessage(errorsb.toString());
+                //拼接信息后面拼接换行符
+                executemessage.setErrorMessage(StringUtils.join(errorOutputStrList,"\n"));
             }
 
             //停止计时，并获取执行时间

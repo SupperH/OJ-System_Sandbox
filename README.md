@@ -297,7 +297,88 @@ awaitCompletion 在这里设置执行时间，如果超时直接退出 达到控
 
 
 
-7
+
+## 优化
+
+## 模板方法设计模式优化代码沙箱
+模板方法： 定义一套通用的执行流程，让子类负责每个执行步骤的具体实现
+是以哦那个与有规范的流程，且流程可以服用，可以大幅度节省重复代码，便于项目扩展，更好维护
+docker流程和java原生的流程几乎一模一样
+
+1.抽象出具体流程
+先赋值具体实现类，然后再一步步抽离为子方法 javaCodeSandboxTemplate
+
+```java
+    @Override
+public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+
+    List<String> inputList = executeCodeRequest.getInputList();
+    String code = executeCodeRequest.getCode();
+    String language = executeCodeRequest.getLanguage();
 
 
+    /*1.把用户代码保存为文件*/
+    File userCodeFile = saveCodeToFile(code);
+
+    /*2.编译代码，得到class文件*/
+    Executemessage compileFileExecuteMessage = compileFile(userCodeFile);
+    System.out.println(compileFileExecuteMessage);
+
+
+    /*3.执行代码，获得执行结果列表*/
+    List<Executemessage> executemessageList = runFile(userCodeFile, inputList);
+
+
+    /*4.整理输出结果*/
+    ExecuteCodeResponse outputResponse = getOutputResponse(executemessageList);
+
+
+    /*5.删除文件*/
+    boolean flg = deleteFile(userCodeFile);
+    if(!flg){
+        log.error("deleteFile error userCodeFilePath = {}",userCodeFile.getAbsolutePath());
+    }
+
+    return outputResponse;
+}
+```
+
+2.定义子类实现
+
+## 暴露代码沙箱api
+很简单，就是在controller加个方法
+```java
+
+/**
+ * 执行代码 以json方式接收参数
+ * @param executeCodeRequest
+ * @return
+ */
+@PostMapping("/executeCode")
+ExecuteCodeResponse executeCode(@RequestBody ExecuteCodeRequest executeCodeRequest){
+    if(executeCodeRequest == null){
+        throw new RuntimeException("请求参数为空");
+    }
+    return javaNativeCodeSandbox.executeCode(executeCodeRequest);
+}
+}
+```
+这里先用java原生方式进行测试
+
+## 调用安全性
+如果将服务不做任何的权限校验，直接发到公网是不安全的
+1.调用方与服务方之间约定一个字符串（最好加密）
+优点实现最简单，比较适合内部系统调用，相对可信的环境内部调用
+缺点不够灵活，如果需要变更密钥，需要修改代码
+```java
+    //传递的请求头，安全性校验
+    private static final String AUTH_REQUEST_HEADER = "auth";
+    //传递的密钥
+    private static final String AUTH_REQUEST_SECRET = "secretKey";
+```
+
+调用方在调用时补充请求头就行了
+
+2.API签名认证
+给允许调用的人员分配accessKey，secretKey，然后校验这两组key是否匹配 api开放平台项目
 
